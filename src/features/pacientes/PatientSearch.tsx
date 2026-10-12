@@ -2,11 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { Loader2, Search, UserRound } from 'lucide-react';
-import { searchPacientes, type PacienteDemografico } from './api';
+import { searchPacientes, type PacienteBusqueda } from './api';
 
-export function PatientSearch({ onSelect }: { onSelect: (p: PacienteDemografico) => void }) {
+export function PatientSearch({ onSelect }: { onSelect: (p: PacienteBusqueda) => void }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PacienteDemografico[]>([]);
+  const [results, setResults] = useState<PacienteBusqueda[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
@@ -43,7 +43,7 @@ export function PatientSearch({ onSelect }: { onSelect: (p: PacienteDemografico)
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  function choose(p: PacienteDemografico) {
+  function choose(p: PacienteBusqueda) {
     onSelect(p);
     setQuery(p.nombreCompleto);
     setOpen(false);

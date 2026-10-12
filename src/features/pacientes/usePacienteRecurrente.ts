@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWatch, type UseFormReturn } from 'react-hook-form';
 import type { HistoriaClinicaValues } from '@/features/historia-clinica/config/fields';
-import { buscarPorIdentificador, CAMPOS_FIJOS, type PacienteDemografico } from './api';
+import { buscarPorIdentificador, CAMPOS_FIJOS, type PacienteBusqueda, type PacienteDemografico } from './api';
 
 type Fijos = Pick<HistoriaClinicaValues, (typeof CAMPOS_FIJOS)[number]>;
 
@@ -47,6 +47,19 @@ export function usePacienteRecurrente(form: UseFormReturn<HistoriaClinicaValues>
     if (p && p.id !== aplicado.current) aplicar(p);
   }, [enabled, getValues, aplicar]);
 
+  /**
+   * El buscador del encabezado solo trae nombre/CURP/NSS (resultado ligero):
+   * antes de copiar los campos fijos hay que pedir el resto (domicilio,
+   * teléfono, empresa, puesto) con el mismo lookup exacto que usa `verificar`.
+   */
+  const aplicarDesdeBusqueda = useCallback(
+    async (resultado: PacienteBusqueda) => {
+      const p = await buscarPorIdentificador({ curp: resultado.curp, nss: resultado.nss }, getValues('folio'));
+      aplicar(p ?? { ...resultado, ultimoFolio: '', fechaNacimiento: '', genero: '', domicilioCalle: '', domicilioColonia: '', domicilioMunicipio: '', domicilioEstado: '', telefono: '', empresa: '', puesto: '' });
+    },
+    [getValues, aplicar],
+  );
+
   useEffect(() => {
     if (!enabled) return;
     const t = setTimeout(verificar, DEBOUNCE_MS);
@@ -69,5 +82,5 @@ export function usePacienteRecurrente(form: UseFormReturn<HistoriaClinicaValues>
   /** Cierra el aviso sin deshacer la precarga. */
   const descartarAviso = useCallback(() => setPrecarga(null), []);
 
-  return { precarga, aplicar, verificar, deshacer, limpiar, descartarAviso };
+  return { precarga, aplicar, aplicarDesdeBusqueda, verificar, deshacer, limpiar, descartarAviso };
 }

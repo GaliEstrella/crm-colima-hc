@@ -6,12 +6,9 @@ import { Badge } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { btnPrimary, card, inputPill } from '@/components/ui/styles';
 import { ALL_FIELDS } from '@/features/historia-clinica/config/fields';
-import { listExpedientes, type Expediente } from '@/features/historia-clinica/api';
+import { obtenerJornada, type Expediente } from '@/features/historia-clinica/api';
 import { formatFechaMx } from '@/features/historia-clinica/lib/format';
 import { todayIso } from '@/lib/local-db';
-
-/** Un expediente pertenece a la jornada si se realizó o se editó por última vez ese día. */
-const enJornada = (e: Expediente, dia: string) => e.values.fechaEstudios === dia || todayIso(new Date(e.actualizadoEn)) === dia;
 
 export function ReporteExcelPanel() {
   const [data, setData] = useState<Expediente[] | null>(null);
@@ -19,14 +16,19 @@ export function ReporteExcelPanel() {
   const [exportando, setExportando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // El servidor ya filtra por jornada (realizados o editados ese día); se vuelve a pedir cuando cambia el día.
   useEffect(() => {
-    listExpedientes().then(setData);
-  }, []);
+    setData(null);
+    setError(null);
+    obtenerJornada(dia)
+      .then(setData)
+      .catch((err: unknown) => {
+        setData([]);
+        setError(err instanceof Error ? err.message : 'No fue posible cargar los expedientes de la jornada.');
+      });
+  }, [dia]);
 
-  const delDia = useMemo(
-    () => (data ?? []).filter((e) => enJornada(e, dia)).sort((a, b) => Number(a.folio) - Number(b.folio)),
-    [data, dia],
-  );
+  const delDia = useMemo(() => [...(data ?? [])].sort((a, b) => Number(a.folio) - Number(b.folio)), [data]);
   const ultimo = delDia.reduce<string | null>((m, e) => (!m || e.actualizadoEn > m ? e.actualizadoEn : m), null);
 
   async function exportar() {
