@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { listarMedicos, type MedicoFirmante } from '@/features/historia-clinica/config/medicos';
+import { listarMedicos, refrescarMedicos, type MedicoFirmante } from '@/features/historia-clinica/config/medicos';
 import { USUARIOS_CAMBIARON } from './api';
 
 /**
@@ -12,7 +12,7 @@ export function useMedicos(): MedicoFirmante[] {
   const [medicos, setMedicos] = useState(listarMedicos);
 
   useEffect(() => {
-    const recargar = () => setMedicos(listarMedicos());
+    const recargar = () => refrescarMedicos().then(() => setMedicos(listarMedicos()));
     recargar(); // por si cambió entre el render y el montaje
     window.addEventListener(USUARIOS_CAMBIARON, recargar);
     window.addEventListener('storage', recargar); // otras pestañas

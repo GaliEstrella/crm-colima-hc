@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { authenticate } from '@/features/usuarios/api';
+import { authenticate, cerrarSesion } from '@/features/usuarios/api';
 import type { Role, SessionUser } from './types';
 
 interface AuthContextValue {
@@ -46,6 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {}
+    // No se espera la respuesta: la sesión local ya se limpió de inmediato.
+    void cerrarSesion();
   }, []);
 
   const actualizarSesion = useCallback((u: SessionUser) => {

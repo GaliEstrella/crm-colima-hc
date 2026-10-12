@@ -134,7 +134,7 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
         </div>
 
         <div className="mb-5 flex flex-wrap items-center gap-3">
-          {!guardado && <PatientSearch onSelect={recurrente.aplicar} />}
+          {!guardado && <PatientSearch onSelect={recurrente.aplicarDesdeBusqueda} />}
           <div className="ml-auto flex items-center gap-2">
             {savedAt && !form.formState.isDirty && (
               <span className="flex animate-fade items-center gap-1 text-xs text-emerald-700">
