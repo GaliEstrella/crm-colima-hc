@@ -2,16 +2,20 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarCheck, ChevronRight, ClipboardList, FolderOpen, Loader2, Search, X } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { StatCard } from '@/components/ui/StatCard';
 import { card, inputPill, pillTab } from '@/components/ui/styles';
-import { todayIso } from '@/lib/local-db';
-import { listExpedientes, type Expediente } from '@/features/historia-clinica/api';
-import { formatFechaMx, normalize } from '@/features/historia-clinica/lib/format';
+import {
+  listExpedientes,
+  obtenerEstadisticasExpedientes,
+  type EstadisticasExpedientes,
+  type ExpedienteResumen,
+} from '@/features/historia-clinica/api';
+import { formatFechaMx } from '@/features/historia-clinica/lib/format';
 
 const PAGE_SIZE = 12;
 
@@ -35,48 +39,49 @@ const MOTIVO_TONE: Record<string, BadgeTone> = {
 /** Histórico de registros: búsqueda rápida, filtros y acceso a cada expediente para consultar o editar. */
 export function NavegadorExpedientes() {
   const router = useRouter();
-  const [data, setData] = useState<Expediente[] | null>(null);
+  const [data, setData] = useState<ExpedienteResumen[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<EstadisticasExpedientes | null>(null);
   const [q, setQ] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [tipo, setTipo] = useState('');
   const [page, setPage] = useState(0);
 
+  // La búsqueda/filtros/paginación los resuelve el servidor; la página aquí es
+  // 0-indexada, el backend espera 1-indexada.
   useEffect(() => {
-    listExpedientes().then(setData);
-  }, []);
+    let cancelled = false;
+    const t = setTimeout(() => {
+      listExpedientes({ q, desde, hasta, tipo, page: page + 1, pageSize: PAGE_SIZE }).then((r) => {
+        if (cancelled) return;
+        setData(r.items);
+        setTotal(r.total);
+      });
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, desde, hasta, tipo, page]);
 
-  const filtrados = useMemo(() => {
-    if (!data) return [];
-    const nq = normalize(q);
-    return data.filter(({ folio, values: v }) => {
-      if (nq && ![v.nombreCompleto, v.curp, folio, v.empresa].some((s) => normalize(s ?? '').includes(nq))) return false;
-      if (desde && v.fechaEstudios < desde) return false;
-      if (hasta && v.fechaEstudios > hasta) return false;
-      if (tipo && v.tipoExamenMotivo !== tipo) return false;
-      return true;
-    });
-  }, [data, q, desde, hasta, tipo]);
+  useEffect(() => {
+    obtenerEstadisticasExpedientes().then(setStats);
+  }, []);
 
   // Volver a la primera página cuando cambian los filtros
   useEffect(() => setPage(0), [q, desde, hasta, tipo]);
 
-  const visibles = filtrados.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const visibles = data ?? [];
   const hayFiltros = !!(q || desde || hasta || tipo);
 
-  const hoy = todayIso();
-  const kpis = useMemo(() => {
-    const d = data ?? [];
-    const haceUnaSemana = Date.now() - 7 * 24 * 3600 * 1000;
-    const porTipo = Object.fromEntries(TIPOS.map((t) => [t.valor, d.filter((e) => e.values.tipoExamenMotivo === t.valor).length]));
-    return {
-      total: d.length,
-      semana: d.filter((e) => new Date(e.creadoEn).getTime() >= haceUnaSemana).length,
-      hoy: d.filter((e) => e.values.fechaEstudios === hoy).length,
-      editadosHoy: d.filter((e) => e.values.fechaEstudios !== hoy && todayIso(new Date(e.actualizadoEn)) === hoy).length,
-      porTipo,
-    };
-  }, [data, hoy]);
+  const kpis = {
+    total: stats?.total ?? 0,
+    semana: stats?.ultimos7Dias ?? 0,
+    hoy: stats?.hoy ?? 0,
+    editadosHoy: stats?.editadosHoy ?? 0,
+    porTipo: stats?.porTipo ?? {},
+  };
 
   return (
     <div className="w-full animate-enter px-4 pb-16 pt-6 sm:px-6">
@@ -90,15 +95,15 @@ export function NavegadorExpedientes() {
         <StatCard
           icon={FolderOpen}
           label="Expedientes registrados"
-          value={data ? kpis.total : '—'}
-          detail={data && kpis.semana > 0 ? `+${kpis.semana} en 7 días` : undefined}
+          value={stats ? kpis.total : '—'}
+          detail={stats && kpis.semana > 0 ? `+${kpis.semana} en 7 días` : undefined}
         />
         <StatCard icon={ClipboardList} label="Tipos de examen" tone="blue">
           <dl className="mt-4 grid grid-cols-3 gap-2">
             {TIPOS.map((t) => (
               <div key={t.valor} className="min-w-0">
                 <dd className="text-2xl font-extrabold tabular-nums tracking-tight text-slate-900 md:text-[28px]">
-                  {data ? kpis.porTipo[t.valor] : '—'}
+                  {stats ? kpis.porTipo[t.valor] ?? 0 : '—'}
                 </dd>
                 <dt className="truncate text-xs text-slate-500">{t.corto}</dt>
               </div>
@@ -109,8 +114,8 @@ export function NavegadorExpedientes() {
           icon={CalendarCheck}
           label="Atenciones de hoy"
           tone="green"
-          value={data ? kpis.hoy : '—'}
-          detail={data && kpis.editadosHoy > 0 ? `${kpis.editadosHoy} editados hoy` : undefined}
+          value={stats ? kpis.hoy : '—'}
+          detail={stats && kpis.editadosHoy > 0 ? `${kpis.editadosHoy} editados hoy` : undefined}
         />
       </div>
 
@@ -168,8 +173,8 @@ export function NavegadorExpedientes() {
           <div className="grid place-items-center py-20">
             <Loader2 className="h-5 w-5 animate-spin text-ink-subtle" />
           </div>
-        ) : filtrados.length === 0 ? (
-          <Vacio hayRegistros={data.length > 0} />
+        ) : visibles.length === 0 ? (
+          <Vacio hayRegistros={total > 0} />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -186,28 +191,28 @@ export function NavegadorExpedientes() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibles.map(({ folio, values: v, actualizadoEn, actualizadoPor }) => (
+                  {visibles.map(({ folio, fechaEstudios, nombreCompleto, curp, empresa, tipoExamenMotivo, actualizadoEn, actualizadoPor }) => (
                     <tr
                       key={folio}
                       onClick={() => router.push(`/expediente/${folio}`)}
                       className="group cursor-pointer border-b border-slate-100 transition-colors duration-150 last:border-0 hover:bg-crm-red-soft/30"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-ink">{folio}</td>
-                      <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-muted">{formatFechaMx(v.fechaEstudios, '/')}</td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-muted">{formatFechaMx(fechaEstudios, '/')}</td>
                       <td className="max-w-72 px-4 py-3">
                         <Link
                           href={`/expediente/${folio}`}
                           onClick={(e) => e.stopPropagation()}
                           className="block truncate font-medium text-ink outline-none group-hover:text-crm-red-dark focus-visible:underline"
                         >
-                          {v.nombreCompleto || 'Sin nombre'}
+                          {nombreCompleto || 'Sin nombre'}
                         </Link>
-                        <span className="block truncate font-mono text-[11px] text-ink-subtle">{v.curp || 'Sin CURP'}</span>
+                        <span className="block truncate font-mono text-[11px] text-ink-subtle">{curp || 'Sin CURP'}</span>
                       </td>
-                      <td className="max-w-48 truncate px-4 py-3 text-ink-muted">{v.empresa || '—'}</td>
+                      <td className="max-w-48 truncate px-4 py-3 text-ink-muted">{empresa || '—'}</td>
                       <td className="px-4 py-3">
-                        {v.tipoExamenMotivo ? (
-                          <Badge tone={MOTIVO_TONE[v.tipoExamenMotivo] ?? 'neutral'}>{v.tipoExamenMotivo}</Badge>
+                        {tipoExamenMotivo ? (
+                          <Badge tone={MOTIVO_TONE[tipoExamenMotivo] ?? 'neutral'}>{tipoExamenMotivo}</Badge>
                         ) : (
                           <span className="text-ink-subtle">—</span>
                         )}
@@ -226,7 +231,7 @@ export function NavegadorExpedientes() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={filtrados.length} onPage={setPage} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
           </>
         )}
       </div>

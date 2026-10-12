@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Eye, FilePlus2, Loader2, PencilLine, ScrollText, Search } from 'lucide-react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { card, inputPill, pillTab } from '@/components/ui/styles';
-import { normalize } from '@/features/historia-clinica/lib/format';
 import { todayIso } from '@/lib/local-db';
 import { ACCIONES, listEventos, type AccionAuditoria, type EventoAuditoria } from './api';
 
@@ -21,29 +20,38 @@ const ACCION_STYLE: Record<AccionAuditoria, { tone: BadgeTone; icon: typeof Eye 
 
 export function BitacoraPanel() {
   const [eventos, setEventos] = useState<EventoAuditoria[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [totalHoy, setTotalHoy] = useState(0);
   const [q, setQ] = useState('');
-  const [accion, setAccion] = useState('');
+  const [accion, setAccion] = useState<AccionAuditoria | ''>('');
   const [fecha, setFecha] = useState('');
   const [page, setPage] = useState(0);
 
+  // La búsqueda/filtros/paginación los resuelve el servidor; la página aquí es 0-indexada,
+  // el backend espera 1-indexada.
   useEffect(() => {
-    listEventos().then(setEventos);
-  }, []);
-
-  const filtrados = useMemo(() => {
-    const nq = normalize(q);
-    return (eventos ?? []).filter((e) => {
-      if (accion && e.accion !== accion) return false;
-      if (fecha && todayIso(new Date(e.fecha)) !== fecha) return false;
-      if (nq && ![e.usuarioNombre, e.folio, e.paciente, e.detalle].some((s) => normalize(s).includes(nq))) return false;
-      return true;
-    });
-  }, [eventos, q, accion, fecha]);
+    let cancelled = false;
+    const t = setTimeout(() => {
+      listEventos({ q, accion, fecha, page: page + 1 }).then((r) => {
+        if (cancelled) return;
+        setEventos(r.items);
+        setTotal(r.total);
+      });
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, accion, fecha, page]);
 
   useEffect(() => setPage(0), [q, accion, fecha]);
 
   const hoy = todayIso();
-  const eventosHoy = eventos?.filter((e) => todayIso(new Date(e.fecha)) === hoy).length ?? 0;
+  useEffect(() => {
+    listEventos({ fecha: hoy }).then((r) => setTotalHoy(r.total));
+    // Solo al montar: "hoy" no cambia durante la sesión.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
@@ -51,7 +59,7 @@ export function BitacoraPanel() {
         title="Bitácora de auditoría"
         description={
           eventos
-            ? `${eventos.length} eventos registrados · ${eventosHoy} hoy. Creaciones, ediciones y consultas de expedientes.`
+            ? `${total} eventos registrados · ${totalHoy} hoy. Creaciones, ediciones y consultas de expedientes.`
             : 'Creaciones, ediciones y consultas de expedientes.'
         }
       />
@@ -86,14 +94,14 @@ export function BitacoraPanel() {
           <div className="grid place-items-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-ink-subtle" />
           </div>
-        ) : filtrados.length === 0 ? (
+        ) : eventos.length === 0 ? (
           <div className="flex flex-col items-center px-6 py-16 text-center">
             <span className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-ink-subtle">
               <ScrollText className="h-5 w-5" />
             </span>
-            <p className="mt-4 text-sm font-semibold text-ink">{eventos.length ? 'Sin coincidencias' : 'Sin eventos todavía'}</p>
+            <p className="mt-4 text-sm font-semibold text-ink">{total ? 'Sin coincidencias' : 'Sin eventos todavía'}</p>
             <p className="mt-1 text-sm text-ink-muted">
-              {eventos.length ? 'Ajusta la búsqueda o los filtros.' : 'Cada folio creado, edición o consulta aparecerá aquí.'}
+              {total ? 'Ajusta la búsqueda o los filtros.' : 'Cada folio creado, edición o consulta aparecerá aquí.'}
             </p>
           </div>
         ) : (
@@ -110,7 +118,7 @@ export function BitacoraPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((e) => {
+                  {eventos.map((e) => {
                     const { tone, icon: Icon } = ACCION_STYLE[e.accion];
                     const d = new Date(e.fecha);
                     return (
@@ -141,7 +149,7 @@ export function BitacoraPanel() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} pageSize={PAGE_SIZE} total={filtrados.length} onPage={setPage} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
           </>
         )}
       </div>

@@ -12,7 +12,7 @@ import { FIELD_BY_KEY, type FieldKey, type HistoriaClinicaValues } from '../conf
 import { SECTIONS, type TabId } from '../config/sections';
 import { resolverExpediente } from '../lib/validacion';
 import { useAutoCalculos } from '../hooks/useAutoCalculos';
-import { abrirExpediente, guardarExpediente, valoresNuevoExpediente } from '../api';
+import { abrirExpediente, guardarExpediente, siguienteFolio, valoresNuevoExpediente } from '../api';
 import { formatFechaMx } from '../lib/format';
 import { HistoriaClinicaForm } from './HistoriaClinicaForm';
 import { ClinicalSummaryPanel } from './ClinicalSummaryPanel';
@@ -37,6 +37,7 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
   const [guardado, setGuardado] = useState(!!folio); // ¿existe ya en la base?
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const recurrente = usePacienteRecurrente(form, carga === 'listo' && !guardado);
 
   useEffect(() => {
@@ -54,19 +55,35 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folio]);
 
+  // Historia nueva: el folio real lo asigna el servidor al guardar; mientras
+  // tanto se muestra el que asignaría ahora mismo (puramente informativo).
+  useEffect(() => {
+    if (folio || guardado) return;
+    let cancelled = false;
+    siguienteFolio().then((f) => {
+      if (!cancelled) form.setValue('folio', f);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folio, guardado]);
+
   function nuevo() {
     form.reset(valoresNuevoExpediente());
     recurrente.limpiar();
     setGuardado(false);
     setSavedAt(null);
     window.history.replaceState(null, '', '/expediente');
+    siguienteFolio().then((f) => form.setValue('folio', f));
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
     if (!user) return;
     setSaving(true);
+    setError(null);
     try {
-      const exp = await guardarExpediente(values, user);
+      const exp = await guardarExpediente(values, user, guardado);
       form.reset(exp.values);
       setSavedAt(new Date(exp.actualizadoEn));
       if (!guardado) {
@@ -75,6 +92,8 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
         // Cambia la URL sin volver a montar la página (no genera una "Consulta" extra)
         window.history.replaceState(null, '', `/expediente/${exp.folio}`);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No fue posible guardar el expediente.');
     } finally {
       setSaving(false);
     }
@@ -132,6 +151,12 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
           </div>
           <PdfActionBar />
         </div>
+
+        {error && (
+          <p role="alert" className="mb-5 animate-pop rounded-2xl border border-crm-red/15 bg-crm-red-soft px-4 py-3 text-sm text-crm-red-dark">
+            {error}
+          </p>
+        )}
 
         <div className="mb-5 flex flex-wrap items-center gap-3">
           {!guardado && <PatientSearch onSelect={recurrente.aplicarDesdeBusqueda} />}

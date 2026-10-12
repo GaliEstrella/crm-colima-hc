@@ -1,13 +1,8 @@
-import { delay, readTable, todayIso, writeTable } from '@/lib/local-db';
+import { apiFetch, ApiError } from '@/lib/api-client';
 import type { SessionUser } from '@/features/auth/types';
-import { registrarEvento } from '@/features/auditoria/api';
-import { ALL_FIELDS, conValoresDeSistema, EMPTY_VALUES, type HistoriaClinicaValues } from './config/fields';
-
-/**
- * MOCK de expedientes. En producción: GET/POST/PUT /api/expedientes enviando
- * `toDbPayload(values)` (columnas snake_case). El folio lo asigna el servidor
- * dentro de una transacción para que dos capturas simultáneas no lo repitan.
- */
+import { medicoIdPorNombre, nombrePorMedicoId } from './config/medicos';
+import { conValoresDeSistema, EMPTY_VALUES, type HistoriaClinicaValues } from './config/fields';
+import { fromDbPayload, toDbPayload } from './lib/db-mapping';
 
 export interface Expediente {
   folio: string;
@@ -18,97 +13,166 @@ export interface Expediente {
   actualizadoPor: { id: string; nombre: string };
 }
 
-const TABLE = 'expedientes';
-/**
- * Solo los campos vigentes: los expedientes guardados antes de retirar R3, R5 y R7
- * (lugarCertificacion, clasificacionPeco, magnitudRiesgo) los pierden al releerse.
- */
-const soloCamposVigentes = (values: Record<string, string>): HistoriaClinicaValues =>
-  conValoresDeSistema(Object.fromEntries(ALL_FIELDS.map((f) => [f.key, values[f.key] ?? ''])) as HistoriaClinicaValues);
-
-const loadAll = () =>
-  readTable<Expediente[]>(TABLE, []).map((e) => ({ ...e, values: soloCamposVigentes(e.values) }));
-
-/** Siguiente folio consecutivo (el mayor folio numérico + 1). */
-export function siguienteFolio(): string {
-  const max = loadAll().reduce((m, e) => Math.max(m, Number(e.folio) || 0), 0);
-  return String(max + 1);
+export interface ExpedienteResumen {
+  folio: string;
+  fechaEstudios: string;
+  nombreCompleto: string;
+  curp: string;
+  empresa: string;
+  tipoExamenMotivo: string;
+  actualizadoEn: string;
+  actualizadoPor: { id: string; nombre: string };
 }
 
-/** Valores iniciales de una historia nueva: folio consecutivo y fecha de hoy. */
+export interface FiltrosExpedientes {
+  q?: string;
+  desde?: string;
+  hasta?: string;
+  tipo?: string;
+  /** 1-indexada, como la página del backend. */
+  page?: number;
+  pageSize?: number;
+}
+
+export interface EstadisticasExpedientes {
+  total: number;
+  ultimos7Dias: number;
+  hoy: number;
+  editadosHoy: number;
+  porTipo: Record<string, number>;
+}
+
+interface BackendExpediente {
+  folio: number;
+  values: Record<string, unknown>;
+  creado_por: { id: string; nombre: string | null };
+  actualizado_por: { id: string; nombre: string | null };
+  created_at: string;
+  updated_at: string;
+}
+
+function aExpediente(e: BackendExpediente): Expediente {
+  const values = conValoresDeSistema(fromDbPayload(e.values));
+  values.folio = String(e.folio);
+  values.medicoDictaminador = nombrePorMedicoId(values.medicoDictaminador) || '';
+  return {
+    folio: String(e.folio),
+    values,
+    creadoEn: e.created_at,
+    creadoPor: { id: e.creado_por.id, nombre: e.creado_por.nombre ?? '' },
+    actualizadoEn: e.updated_at,
+    actualizadoPor: { id: e.actualizado_por.id, nombre: e.actualizado_por.nombre ?? '' },
+  };
+}
+
+/** Folio que asignaría el servidor ahora mismo; solo informativo, el real se asigna al guardar. */
+export async function siguienteFolio(): Promise<string> {
+  const { folio } = await apiFetch<{ folio: number }>('/expedientes/siguiente-folio');
+  return String(folio);
+}
+
+/** Valores iniciales de una historia nueva: folio vacío (se completa al llegar la respuesta del servidor) y fecha de hoy. */
 export function valoresNuevoExpediente(): HistoriaClinicaValues {
-  return conValoresDeSistema({ ...EMPTY_VALUES, folio: siguienteFolio(), fechaEstudios: todayIso() });
+  const hoy = new Date();
+  const fechaEstudios = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  return conValoresDeSistema({ ...EMPTY_VALUES, fechaEstudios });
 }
 
-export async function listExpedientes(): Promise<Expediente[]> {
-  await delay(150);
-  return loadAll().sort((a, b) => b.actualizadoEn.localeCompare(a.actualizadoEn));
-}
-
-/** Abre un expediente y deja constancia de la consulta en la bitácora. */
-export async function abrirExpediente(folio: string, user: SessionUser): Promise<Expediente | null> {
-  await delay(150);
-  const exp = loadAll().find((e) => e.folio === folio) ?? null;
-  if (exp) {
-    registrarEvento(user, 'Consulta', {
-      folio,
-      paciente: exp.values.nombreCompleto,
-      detalle: 'Apertura del expediente',
-    });
+/** Navegador de expedientes: búsqueda, filtros y paginación los resuelve el servidor. */
+export async function listExpedientes(
+  filtros: FiltrosExpedientes = {},
+): Promise<{ items: ExpedienteResumen[]; total: number }> {
+  interface Fila {
+    folio: number;
+    fecha_estudios: string;
+    nombre_completo: string | null;
+    curp: string | null;
+    empresa: string | null;
+    tipo_examen_motivo: string | null;
+    updated_at: string;
+    actualizado_por: string | null;
   }
-  return exp;
+  const { items, total } = await apiFetch<{ items: Fila[]; total: number }>('/expedientes', {
+    query: {
+      q: filtros.q,
+      desde: filtros.desde,
+      hasta: filtros.hasta,
+      tipo: filtros.tipo,
+      page: filtros.page,
+      page_size: filtros.pageSize,
+    },
+  });
+  return {
+    total,
+    items: items.map((i) => ({
+      folio: String(i.folio),
+      fechaEstudios: i.fecha_estudios,
+      nombreCompleto: i.nombre_completo ?? '',
+      curp: i.curp ?? '',
+      empresa: i.empresa ?? '',
+      tipoExamenMotivo: i.tipo_examen_motivo ?? '',
+      actualizadoEn: i.updated_at,
+      actualizadoPor: { id: '', nombre: i.actualizado_por ?? '' },
+    })),
+  };
 }
 
-const LABEL = new Map(ALL_FIELDS.map((f) => [f.key, `${f.code} ${f.label}`]));
+/** Tarjetas de métricas del navegador de expedientes. */
+export async function obtenerEstadisticasExpedientes(): Promise<EstadisticasExpedientes> {
+  const r = await apiFetch<{
+    total: number;
+    ultimos_7_dias: number;
+    hoy: number;
+    editados_hoy: number;
+    por_tipo: Record<string, number>;
+  }>('/expedientes/estadisticas');
+  return { total: r.total, ultimos7Dias: r.ultimos_7_dias, hoy: r.hoy, editadosHoy: r.editados_hoy, porTipo: r.por_tipo };
+}
 
-function camposModificados(antes: HistoriaClinicaValues, despues: HistoriaClinicaValues): string {
-  const cambios = ALL_FIELDS.filter((f) => (antes[f.key] ?? '').trim() !== (despues[f.key] ?? '').trim()).map(
-    (f) => LABEL.get(f.key)!,
-  );
-  if (!cambios.length) return 'Guardado sin cambios';
-  const visibles = cambios.slice(0, 6).join(', ');
-  return cambios.length > 6 ? `${visibles} y ${cambios.length - 6} más` : visibles;
+/** Abre un expediente; el servidor deja constancia de la consulta en la bitácora. */
+export async function abrirExpediente(folio: string, _user: SessionUser): Promise<Expediente | null> {
+  try {
+    const data = await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(folio)}`);
+    return aExpediente(data);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 /**
- * Crea (folio vacío o inexistente) o actualiza un expediente. Al crear se
- * asigna el folio consecutivo en ese momento, aunque la pantalla mostrara otro.
+ * Expedientes de una jornada (los realizados ese día, o editados ese día
+ * aunque se hayan realizado antes), para construir el Excel diario.
+ * Solo lo puede pedir un administrador.
+ */
+export async function obtenerJornada(fecha: string): Promise<Expediente[]> {
+  const { items } = await apiFetch<{ fecha: string; items: BackendExpediente[] }>('/export/excel', {
+    query: { fecha },
+  });
+  return items.map(aExpediente);
+}
+
+/**
+ * Crea (yaExiste = false) o actualiza (yaExiste = true) un expediente. El
+ * folio y la fecha de realización los asigna/conserva el servidor; el
+ * detalle de qué cambió en una edición lo calcula y registra el servidor.
  */
 export async function guardarExpediente(
   values: HistoriaClinicaValues,
-  user: SessionUser,
+  _user: SessionUser,
+  yaExiste: boolean,
 ): Promise<Expediente> {
-  await delay(400);
-  const all = loadAll();
-  const ahora = new Date().toISOString();
-  const quien = { id: user.id, nombre: user.nombre };
-  const limpio = conValoresDeSistema(
-    Object.fromEntries(Object.entries(values).map(([k, v]) => [k, (v ?? '').trim()])) as HistoriaClinicaValues,
-  );
+  const limpio = conValoresDeSistema(values);
+  const payload = toDbPayload(limpio);
+  // medicoDictaminador guarda el NOMBRE en el formulario; el backend espera el id del usuario.
+  payload.medico_dictaminador = medicoIdPorNombre(limpio.medicoDictaminador) ?? null;
 
-  const i = all.findIndex((e) => e.folio === limpio.folio);
-  if (i >= 0) {
-    const detalle = camposModificados(all[i].values, limpio);
-    all[i] = { ...all[i], values: limpio, actualizadoEn: ahora, actualizadoPor: quien };
-    writeTable(TABLE, all);
-    registrarEvento(user, 'Edición de Expediente', { folio: limpio.folio, paciente: limpio.nombreCompleto, detalle });
-    return all[i];
-  }
+  const data = yaExiste
+    ? await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(limpio.folio)}`, {
+        method: 'PUT',
+        body: payload,
+      })
+    : await apiFetch<BackendExpediente>('/expedientes', { method: 'POST', body: payload });
 
-  const folio = siguienteFolio();
-  const exp: Expediente = {
-    folio,
-    values: { ...limpio, folio, fechaEstudios: limpio.fechaEstudios || todayIso() },
-    creadoEn: ahora,
-    creadoPor: quien,
-    actualizadoEn: ahora,
-    actualizadoPor: quien,
-  };
-  writeTable(TABLE, [...all, exp]);
-  registrarEvento(user, 'Creación de Folio', {
-    folio,
-    paciente: exp.values.nombreCompleto,
-    detalle: `Nueva historia clínica${exp.values.tipoExamenMotivo ? ` · ${exp.values.tipoExamenMotivo}` : ''}`,
-  });
-  return exp;
+  return aExpediente(data);
 }

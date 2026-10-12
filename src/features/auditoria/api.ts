@@ -1,5 +1,4 @@
-import { delay, newId, readTable, writeTable } from '@/lib/local-db';
-import type { SessionUser } from '@/features/auth/types';
+import { apiFetch } from '@/lib/api-client';
 
 export type AccionAuditoria = 'Creación de Folio' | 'Edición de Expediente' | 'Consulta';
 
@@ -9,7 +8,6 @@ export interface EventoAuditoria {
   id: string;
   /** ISO 8601 con hora exacta */
   fecha: string;
-  usuarioId: string;
   usuarioNombre: string;
   accion: AccionAuditoria;
   folio: string;
@@ -17,35 +15,37 @@ export interface EventoAuditoria {
   detalle: string;
 }
 
-const TABLE = 'bitacora';
-/** Tope del mock local; el backend debe conservar la bitácora completa. */
-const MAX_EVENTOS = 5000;
-
-/**
- * Registra un evento. En producción la bitácora la escribe el SERVIDOR en el
- * mismo endpoint que guarda o sirve el expediente, para que no se pueda omitir.
- */
-export function registrarEvento(
-  user: SessionUser,
-  accion: AccionAuditoria,
-  { folio, paciente, detalle }: { folio: string; paciente: string; detalle: string },
-): void {
-  const eventos = readTable<EventoAuditoria[]>(TABLE, []);
-  eventos.unshift({
-    id: newId(),
-    fecha: new Date().toISOString(),
-    usuarioId: user.id,
-    usuarioNombre: user.nombre,
-    accion,
-    folio,
-    paciente,
-    detalle,
-  });
-  writeTable(TABLE, eventos.slice(0, MAX_EVENTOS));
+export interface FiltrosBitacora {
+  accion?: AccionAuditoria | '';
+  fecha?: string;
+  q?: string;
+  page?: number;
 }
 
-/** Más recientes primero. */
-export async function listEventos(): Promise<EventoAuditoria[]> {
-  await delay(150);
-  return readTable<EventoAuditoria[]>(TABLE, []);
+interface FilaBackend {
+  fecha: string;
+  usuario_nombre: string;
+  accion: AccionAuditoria;
+  folio: number;
+  paciente: string | null;
+  detalle: string;
+}
+
+const aEvento = (f: FilaBackend, i: number): EventoAuditoria => ({
+  // El backend no manda un id propio por fila; alcanza con que sea único en esta página.
+  id: `${f.folio}-${f.fecha}-${i}`,
+  fecha: f.fecha,
+  usuarioNombre: f.usuario_nombre,
+  accion: f.accion,
+  folio: String(f.folio),
+  paciente: f.paciente ?? '',
+  detalle: f.detalle,
+});
+
+/** Más recientes primero. El servidor escribe la bitácora; aquí solo se consulta. */
+export async function listEventos(filtros: FiltrosBitacora = {}): Promise<{ items: EventoAuditoria[]; total: number }> {
+  const { items, total } = await apiFetch<{ items: FilaBackend[]; total: number }>('/bitacora', {
+    query: { accion: filtros.accion || undefined, fecha: filtros.fecha, q: filtros.q, page: filtros.page },
+  });
+  return { items: items.map(aEvento), total };
 }
