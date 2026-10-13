@@ -23,7 +23,7 @@ export function BitacoraPanel() {
   const [total, setTotal] = useState(0);
   const [totalHoy, setTotalHoy] = useState(0);
   const [q, setQ] = useState('');
-  const [accion, setAccion] = useState<AccionAuditoria | ''>('');
+  const [accion, setAccion] = useState('');
   const [fecha, setFecha] = useState('');
   const [page, setPage] = useState(0);
 

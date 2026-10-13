@@ -16,7 +16,7 @@ export interface EventoAuditoria {
 }
 
 export interface FiltrosBitacora {
-  accion?: AccionAuditoria | '';
+  accion?: string;
   fecha?: string;
   q?: string;
   page?: number;
