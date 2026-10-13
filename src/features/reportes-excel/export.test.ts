@@ -7,6 +7,7 @@ import { construirLibro } from './export';
 
 const exp = (folio: string, gradiente: string): Expediente => ({
   folio,
+  anio: 2026,
   values: { ...EMPTY_VALUES, folio, gradiente, nombreCompleto: `PACIENTE ${folio}` },
   creadoEn: '2026-10-11T15:00:00.000Z',
   creadoPor: { id: 'u', nombre: 'Leo' },

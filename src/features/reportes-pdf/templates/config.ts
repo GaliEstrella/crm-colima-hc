@@ -95,4 +95,6 @@ export interface PdfLogos {
   cruzRoja?: string;
   penaColorada?: string;
   serviciosMedicos?: string;
+  /** Rúbrica del médico dictaminador (Dr. Manuel Alejandro Coria Salas), para el campo de firma de PECO y TX. */
+  firmaCoriaSalas?: string;
 }

@@ -10,6 +10,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { StatCard } from '@/components/ui/StatCard';
 import { card, inputPill, pillTab } from '@/components/ui/styles';
 import {
+  clave,
   listExpedientes,
   obtenerEstadisticasExpedientes,
   type EstadisticasExpedientes,
@@ -191,17 +192,17 @@ export function NavegadorExpedientes() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibles.map(({ folio, fechaEstudios, nombreCompleto, curp, empresa, tipoExamenMotivo, actualizadoEn, actualizadoPor }) => (
+                  {visibles.map(({ folio, anio, fechaEstudios, nombreCompleto, curp, empresa, tipoExamenMotivo, actualizadoEn, actualizadoPor }) => (
                     <tr
-                      key={folio}
-                      onClick={() => router.push(`/expediente/${folio}`)}
+                      key={clave(anio, folio)}
+                      onClick={() => router.push(`/expediente/${clave(anio, folio)}`)}
                       className="group cursor-pointer border-b border-slate-100 transition-colors duration-150 last:border-0 hover:bg-crm-red-soft/30"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-ink">{folio}</td>
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums text-ink-muted">{formatFechaMx(fechaEstudios, '/')}</td>
                       <td className="max-w-72 px-4 py-3">
                         <Link
-                          href={`/expediente/${folio}`}
+                          href={`/expediente/${clave(anio, folio)}`}
                           onClick={(e) => e.stopPropagation()}
                           className="block truncate font-medium text-ink outline-none group-hover:text-crm-red-dark focus-visible:underline"
                         >

@@ -35,6 +35,7 @@ export interface PacienteBusqueda {
 interface LookupRespuesta {
   paciente_id: string;
   ultimo_folio: number | null;
+  ultimo_anio: number | null;
   datos: Record<string, unknown>;
 }
 
@@ -52,19 +53,19 @@ export const claveNss = (v: string | undefined) => (v ?? '').replace(/\D/g, '');
 
 /**
  * Coincidencia EXACTA por CURP (18 caracteres) o NSS (11 dígitos) completos, para el
- * precargado automático de pacientes recurrentes. `excluirFolio` evita que un
- * expediente se encuentre a sí mismo.
+ * precargado automático de pacientes recurrentes. `excluirClave` ("{año}-{folio}")
+ * evita que un expediente se encuentre a sí mismo.
  */
 export async function buscarPorIdentificador(
   { curp, nss }: { curp?: string; nss?: string },
-  excluirFolio?: string,
+  excluirClave?: string,
 ): Promise<PacienteDemografico | null> {
   const c = claveCurp(curp);
   const n = claveNss(nss);
   if (c.length !== 18 && n.length !== 11) return null;
   try {
     const r = await apiFetch<LookupRespuesta>('/pacientes/lookup', {
-      query: { curp: c.length === 18 ? c : undefined, nss: n.length === 11 ? n : undefined, excluir_folio: excluirFolio },
+      query: { curp: c.length === 18 ? c : undefined, nss: n.length === 11 ? n : undefined, excluir_clave: excluirClave },
     });
     return camposFijosDesde(r.paciente_id, r.ultimo_folio ? String(r.ultimo_folio) : '', r.datos);
   } catch (e) {

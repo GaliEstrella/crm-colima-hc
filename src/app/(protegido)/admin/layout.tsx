@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { CierreAnioAviso } from '@/features/anios/CierreAnioAviso';
 
 /**
  * Panel de Leo. La navegación entre sus secciones vive solo en el sidebar.
@@ -27,6 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div key={pathname} className="w-full animate-enter px-4 pb-16 pt-6 sm:px-6">
+      <CierreAnioAviso />
       {children}
     </div>
   );

@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Pagination } from '@/components/ui/Pagination';
 import { card, inputPill, pillTab } from '@/components/ui/styles';
 import { todayIso } from '@/lib/local-db';
+import { clave } from '@/features/historia-clinica/api';
 import { ACCIONES, listEventos, type AccionAuditoria, type EventoAuditoria } from './api';
 
 const PAGE_SIZE = 20;
@@ -16,6 +17,7 @@ const ACCION_STYLE: Record<AccionAuditoria, { tone: BadgeTone; icon: typeof Eye 
   'Creación de Folio': { tone: 'green', icon: FilePlus2 },
   'Edición de Expediente': { tone: 'amber', icon: PencilLine },
   Consulta: { tone: 'blue', icon: Eye },
+  'Importación Histórica': { tone: 'blue', icon: ScrollText },
 };
 
 export function BitacoraPanel() {
@@ -23,7 +25,7 @@ export function BitacoraPanel() {
   const [total, setTotal] = useState(0);
   const [totalHoy, setTotalHoy] = useState(0);
   const [q, setQ] = useState('');
-  const [accion, setAccion] = useState<AccionAuditoria | ''>('');
+  const [accion, setAccion] = useState('');
   const [fecha, setFecha] = useState('');
   const [page, setPage] = useState(0);
 
@@ -137,7 +139,7 @@ export function BitacoraPanel() {
                           </Badge>
                         </td>
                         <td className="max-w-64 px-4 py-3">
-                          <Link href={`/expediente/${e.folio}`} className="font-mono text-xs font-semibold text-ink hover:text-crm-red hover:underline">
+                          <Link href={`/expediente/${clave(e.anio, e.folio)}`} className="font-mono text-xs font-semibold text-ink hover:text-crm-red hover:underline">
                             Folio {e.folio}
                           </Link>
                           <span className="block truncate text-xs text-ink-muted">{e.paciente || 'Sin nombre'}</span>

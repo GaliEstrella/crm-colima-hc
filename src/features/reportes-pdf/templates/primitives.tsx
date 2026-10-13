@@ -330,11 +330,12 @@ export function RightTitle({ title, subtitle, bold = false }: { title: string; s
   );
 }
 
-/** Firma: línea, nombre y cargo. La rúbrica se estampa a mano o con la firma electrónica del médico. */
-export function Signature({ lines, width = 200, label }: { lines: string[]; width?: number; label?: string }) {
+/** Firma: rúbrica (si hay), línea, nombre y cargo. */
+export function Signature({ lines, width = 200, label, imagenSrc }: { lines: string[]; width?: number; label?: string; imagenSrc?: string }) {
   return (
-    <View style={{ marginTop: 30, alignSelf: 'center', alignItems: 'center' }} wrap={false}>
+    <View style={{ marginTop: imagenSrc ? 6 : 30, alignSelf: 'center', alignItems: 'center' }} wrap={false}>
       {label ? <Text style={{ marginBottom: 26 }}>{label}</Text> : null}
+      {imagenSrc ? <Image src={imagenSrc} style={{ width: 62, height: 37, objectFit: 'contain', marginBottom: -6 }} /> : null}
       <View style={{ width, borderTopWidth: 0.7, borderTopColor: '#000000', paddingTop: 2, alignItems: 'center' }}>
         {lines.map((l, i) => (
           <Text key={i} style={{ marginTop: i ? 1 : 0 }}>

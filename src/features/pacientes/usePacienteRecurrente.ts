@@ -41,11 +41,16 @@ export function usePacienteRecurrente(form: UseFormReturn<HistoriaClinicaValues>
     [getValues, setValue],
   );
 
+  // Esto solo corre con `enabled` (historia nueva, aun sin guardar), asi que
+  // la historia que se excluye todavia no existe en la base: su "año" es
+  // siempre el actual (fecha_estudios de una captura nueva es "hoy").
+  const claveActual = useCallback(() => `${new Date().getFullYear()}-${getValues('folio')}`, [getValues]);
+
   const verificar = useCallback(async () => {
     if (!enabled) return;
-    const p = await buscarPorIdentificador({ curp: getValues('curp'), nss: getValues('nss') }, getValues('folio'));
+    const p = await buscarPorIdentificador({ curp: getValues('curp'), nss: getValues('nss') }, claveActual());
     if (p && p.id !== aplicado.current) aplicar(p);
-  }, [enabled, getValues, aplicar]);
+  }, [enabled, getValues, aplicar, claveActual]);
 
   /**
    * El buscador del encabezado solo trae nombre/CURP/NSS (resultado ligero):
@@ -54,10 +59,10 @@ export function usePacienteRecurrente(form: UseFormReturn<HistoriaClinicaValues>
    */
   const aplicarDesdeBusqueda = useCallback(
     async (resultado: PacienteBusqueda) => {
-      const p = await buscarPorIdentificador({ curp: resultado.curp, nss: resultado.nss }, getValues('folio'));
+      const p = await buscarPorIdentificador({ curp: resultado.curp, nss: resultado.nss }, claveActual());
       aplicar(p ?? { ...resultado, ultimoFolio: '', fechaNacimiento: '', genero: '', domicilioCalle: '', domicilioColonia: '', domicilioMunicipio: '', domicilioEstado: '', telefono: '', empresa: '', puesto: '' });
     },
-    [getValues, aplicar],
+    [aplicar, claveActual],
   );
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { Text, View } from '@react-pdf/renderer';
+import { Image, Text, View } from '@react-pdf/renderer';
 import { AUDIO_FRECUENCIAS, type FieldKey, type HistoriaClinicaValues } from '@/features/historia-clinica/config/fields';
 import { OFTALMOLOGO, type MedicoFirmante } from '@/features/historia-clinica/config/medicos';
 import type { PdfLogos, PlantillaId } from './config';
@@ -334,17 +334,35 @@ export function Laboratorio({ get, v }: P) {
   );
 }
 
-/** Tabla horizontal de drogas (hoja principal TX). */
+/** Tabla horizontal de drogas (hoja principal TX): cada celda se pinta de REACTIVO_FONDO.TX si dio reactivo. */
 export function DrogasTablaTx({ get }: { get: Get }) {
   const t = useTheme();
   const abrev = Object.fromEntries(DROGAS.map((d) => [d.key, d.abrev]));
+  const cell = { borderRightWidth: 0.6, borderBottomWidth: 0.6, borderColor: '#FFFFFF', paddingVertical: 1.6, paddingHorizontal: 2.5 };
   return (
     <View style={{ flexDirection: 'row', marginTop: 8 }} wrap={false}>
       <View style={{ width: '36%', backgroundColor: t.highlight, justifyContent: 'center', marginRight: 2 }}>
         <Text style={{ color: '#FFFFFF', textAlign: 'center' }}>Búsqueda de drogas en orina</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Table head={ORDEN_TABLA_TX.map((k) => abrev[k])} widths={ORDEN_TABLA_TX.map(() => 100 / 6)} rows={[ORDEN_TABLA_TX.map((k) => get(k))]} />
+        <View style={{ flexDirection: 'row' }}>
+          {ORDEN_TABLA_TX.map((k) => (
+            <Text key={k} style={[cell, { width: `${100 / 6}%`, backgroundColor: t.label, color: '#FFFFFF', textAlign: 'center' }]}>
+              {abrev[k]}
+            </Text>
+          ))}
+        </View>
+        <View style={{ flexDirection: 'row' }}>
+          {ORDEN_TABLA_TX.map((k) => {
+            const resultado = get(k);
+            const reactivo = esReactivo(resultado);
+            return (
+              <Text key={k} style={[cell, { width: `${100 / 6}%`, backgroundColor: reactivo ? REACTIVO_FONDO.TX : t.value, color: reactivo ? '#FFFFFF' : undefined, textAlign: 'center' }]}>
+                {resultado}
+              </Text>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -380,7 +398,7 @@ export function DiagnosticoGeneral({ get }: { get: Get }) {
 }
 
 /** Bloque de médico dictaminador del formato TX (hoja principal y pruebas complementarias). */
-export function MedicoDictaminadorTx({ medico, nombreCapturado }: { medico?: MedicoFirmante; nombreCapturado: string }) {
+export function MedicoDictaminadorTx({ medico, nombreCapturado, logos }: { medico?: MedicoFirmante; nombreCapturado: string; logos: PdfLogos }) {
   const get: Get = () => '';
   return (
     <View wrap={false}>
@@ -396,7 +414,11 @@ export function MedicoDictaminadorTx({ medico, nombreCapturado }: { medico?: Med
         ]}
       />
       <Text style={{ textAlign: 'center', marginTop: 10 }}>Firma</Text>
-      <View style={{ alignSelf: 'center', width: 150, height: 34, borderBottomWidth: 0.5, borderBottomColor: '#BFBFBF' }} />
+      {medico && logos.firmaCoriaSalas ? (
+        <Image src={logos.firmaCoriaSalas} style={{ alignSelf: 'center', width: 56, height: 34, objectFit: 'contain' }} />
+      ) : (
+        <View style={{ alignSelf: 'center', width: 150, height: 34, borderBottomWidth: 0.5, borderBottomColor: '#BFBFBF' }} />
+      )}
     </View>
   );
 }
@@ -420,6 +442,12 @@ interface HojaProps {
   datos: CellDef[][];
 }
 
+/** Fondo de un resultado "REACTIVO" en la tabla de drogas, tal como viene en los formatos oficiales. */
+const REACTIVO_FONDO: Record<V, string> = { PECO: '#FFFF00', TX: '#FF3600' };
+
+/** true solo con el texto exacto "REACTIVO" (no con "NO REACTIVO"). */
+const esReactivo = (resultado: string) => resultado.trim().toUpperCase() === 'REACTIVO';
+
 export function HojaPruebasComplementarias({ get, v, logos, datos, firmaPeco, medico, nombreCapturado }: HojaProps & { firmaPeco: string[]; medico?: MedicoFirmante; nombreCapturado: string }) {
   const t = useTheme();
   const peco = v === 'PECO';
@@ -429,22 +457,24 @@ export function HojaPruebasComplementarias({ get, v, logos, datos, firmaPeco, me
       <Text style={{ width: '40%', backgroundColor: t.bar, color: '#FFFFFF', textAlign: 'center', fontFamily: BOLD, paddingVertical: 1.6 }}>Resultado</Text>
     </View>
   );
-  const fila = (nombre: string, resultado: string, cabecera = false) =>
-    peco ? (
+  const fila = (nombre: string, resultado: string, cabecera = false) => {
+    const reactivo = !cabecera && esReactivo(resultado);
+    return peco ? (
       <View style={{ flexDirection: 'row', marginTop: 3 }}>
         <View style={{ width: '60%', backgroundColor: t.label, justifyContent: 'center', minHeight: cabecera ? 20 : 15, marginRight: 1 }}>
           <Text style={{ color: '#FFFFFF', textAlign: 'center', fontFamily: BOLD }}>{nombre}</Text>
         </View>
-        <View style={{ width: '40%', backgroundColor: cabecera ? '#808080' : '#FFFFFF', justifyContent: 'center' }}>
-          <Text style={{ textAlign: 'center', fontFamily: BOLD, color: cabecera ? '#FFFFFF' : '#000000' }}>{resultado}</Text>
+        <View style={{ width: '40%', backgroundColor: cabecera ? '#808080' : reactivo ? REACTIVO_FONDO.PECO : '#FFFFFF', justifyContent: 'center' }}>
+          <Text style={{ textAlign: 'center', fontFamily: BOLD, color: '#000000' }}>{resultado}</Text>
         </View>
       </View>
     ) : (
       <View style={{ flexDirection: 'row', marginTop: 4 }}>
         <Text style={{ width: '60%', textAlign: cabecera ? 'left' : 'center', fontFamily: BOLD }}>{nombre}</Text>
-        <Text style={{ width: '40%', textAlign: 'center' }}>{resultado}</Text>
+        <Text style={{ width: '40%', textAlign: 'center', backgroundColor: reactivo ? REACTIVO_FONDO.TX : undefined, color: reactivo ? '#FFFFFF' : undefined }}>{resultado}</Text>
       </View>
     );
+  };
 
   return (
     <Hoja footer="Pruebas complementarias · Coordinación de Servicios Médicos">
@@ -472,7 +502,11 @@ export function HojaPruebasComplementarias({ get, v, logos, datos, firmaPeco, me
         <Text style={{ color: '#808080', fontSize: peco ? 6.6 : 4.8 }}>{METODO_GRUPO_RH}</Text>
       </View>
 
-      {peco ? <Signature lines={firmaPeco} /> : <MedicoDictaminadorTx medico={medico} nombreCapturado={nombreCapturado} />}
+      {peco ? (
+        <Signature lines={firmaPeco} imagenSrc={medico ? logos.firmaCoriaSalas : undefined} />
+      ) : (
+        <MedicoDictaminadorTx medico={medico} nombreCapturado={nombreCapturado} logos={logos} />
+      )}
     </Hoja>
   );
 }
