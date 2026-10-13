@@ -469,9 +469,9 @@ export function HojaPruebasComplementarias({ get, v, logos, datos, firmaPeco, me
         </View>
       </View>
     ) : (
-      <View style={{ flexDirection: 'row', marginTop: 4, backgroundColor: reactivo ? REACTIVO_FONDO.TX : undefined }}>
-        <Text style={{ width: '60%', textAlign: cabecera ? 'left' : 'center', fontFamily: BOLD, color: reactivo ? '#FFFFFF' : undefined }}>{nombre}</Text>
-        <Text style={{ width: '40%', textAlign: 'center', color: reactivo ? '#FFFFFF' : undefined }}>{resultado}</Text>
+      <View style={{ flexDirection: 'row', marginTop: 4 }}>
+        <Text style={{ width: '60%', textAlign: cabecera ? 'left' : 'center', fontFamily: BOLD }}>{nombre}</Text>
+        <Text style={{ width: '40%', textAlign: 'center', backgroundColor: reactivo ? REACTIVO_FONDO.TX : undefined, color: reactivo ? '#FFFFFF' : undefined }}>{resultado}</Text>
       </View>
     );
   };
