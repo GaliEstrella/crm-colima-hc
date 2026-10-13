@@ -25,7 +25,7 @@ export function BitacoraPanel() {
   const [total, setTotal] = useState(0);
   const [totalHoy, setTotalHoy] = useState(0);
   const [q, setQ] = useState('');
-  const [accion, setAccion] = useState('');
+  const [accion, setAccion] = useState<AccionAuditoria | ''>('');
   const [fecha, setFecha] = useState('');
   const [page, setPage] = useState(0);
 
@@ -69,7 +69,7 @@ export function BitacoraPanel() {
       <div className={`${card} overflow-hidden`}>
         <div className="space-y-4 p-6 pb-5">
           <div role="tablist" aria-label="Tipo de acción" className="no-scrollbar flex w-fit max-w-full gap-1 overflow-x-auto rounded-full bg-well p-1">
-            {[{ valor: '', corto: 'Todas' }, ...ACCIONES.map((a) => ({ valor: a, corto: a.split(' ')[0] }))].map((t) => (
+            {([{ valor: '', corto: 'Todas' }, ...ACCIONES.map((a) => ({ valor: a, corto: a.split(' ')[0] }))] as { valor: AccionAuditoria | ''; corto: string }[]).map((t) => (
               <button
                 key={t.valor || 'todas'}
                 type="button"
