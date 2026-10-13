@@ -102,7 +102,7 @@ export function TxTemplate({ values, logos }: { values: HistoriaClinicaValues; l
           <DrogasTablaTx get={get} />
           <Gabinete get={get} v="TX" />
           <DiagnosticoGeneral get={get} />
-          <MedicoDictaminadorTx medico={medico} nombreCapturado={values.medicoDictaminador} />
+          <MedicoDictaminadorTx medico={medico} nombreCapturado={values.medicoDictaminador} logos={logos} />
         </Hoja>
 
         <HojaPruebasComplementarias get={get} v="TX" logos={logos} datos={datosHojas} firmaPeco={[]} medico={medico} nombreCapturado={values.medicoDictaminador} />

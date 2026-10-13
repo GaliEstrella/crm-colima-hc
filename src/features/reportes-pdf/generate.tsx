@@ -8,6 +8,7 @@ const LOGO_FILES: Record<keyof PdfLogos, string> = {
   cruzRoja: '/brand/logo-cruz-roja-horizontal.png',
   penaColorada: '/brand/logo-pena-colorada.png',
   serviciosMedicos: '/brand/logo-servicios-medicos.png',
+  firmaCoriaSalas: '/brand/firma-coria-salas.png',
 };
 
 let cache: PdfLogos | null = null;

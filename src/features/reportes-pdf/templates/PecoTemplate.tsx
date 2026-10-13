@@ -104,10 +104,10 @@ export function PecoTemplate({ values, logos }: { values: HistoriaClinicaValues;
           <Laboratorio get={get} v="PECO" />
           <Gabinete get={get} v="PECO" />
           <DiagnosticoGeneral get={get} />
-          <Signature lines={['Médico dictaminador']} />
+          <Signature lines={firma} imagenSrc={medico ? logos.firmaCoriaSalas : undefined} />
         </Hoja>
 
-        <HojaPruebasComplementarias get={get} v="PECO" logos={logos} datos={datosHojas} firmaPeco={firma} nombreCapturado={values.medicoDictaminador} />
+        <HojaPruebasComplementarias get={get} v="PECO" logos={logos} datos={datosHojas} firmaPeco={firma} medico={medico} nombreCapturado={values.medicoDictaminador} />
         <HojaExamenesVisuales get={get} v="PECO" logos={logos} datos={datosHojas} />
       </PdfThemeProvider>
     </Document>
