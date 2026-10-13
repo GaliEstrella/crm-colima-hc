@@ -12,7 +12,7 @@ import { FIELD_BY_KEY, type FieldKey, type HistoriaClinicaValues } from '../conf
 import { SECTIONS, type TabId } from '../config/sections';
 import { resolverExpediente } from '../lib/validacion';
 import { useAutoCalculos } from '../hooks/useAutoCalculos';
-import { abrirExpediente, guardarExpediente, siguienteFolio, valoresNuevoExpediente } from '../api';
+import { abrirExpediente, clave, guardarExpediente, siguienteFolio, valoresNuevoExpediente } from '../api';
 import { formatFechaMx } from '../lib/format';
 import { HistoriaClinicaForm } from './HistoriaClinicaForm';
 import { ClinicalSummaryPanel } from './ClinicalSummaryPanel';
@@ -35,6 +35,9 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
   const { normalizarTallaAlSalir } = useAutoCalculos(form);
   const [carga, setCarga] = useState<Carga>(folio ? 'cargando' : 'listo');
   const [guardado, setGuardado] = useState(!!folio); // ¿existe ya en la base?
+  // Clave de ruta "{anio}-{folio}" del expediente abierto; se actualiza tras
+  // el primer guardado de una historia nueva (antes de eso no existe en la base).
+  const [claveActual, setClaveActual] = useState<string | undefined>(folio);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
     form.reset(valoresNuevoExpediente());
     recurrente.limpiar();
     setGuardado(false);
+    setClaveActual(undefined);
     setSavedAt(null);
     window.history.replaceState(null, '', '/expediente');
     siguienteFolio().then((f) => form.setValue('folio', f));
@@ -83,14 +87,16 @@ export function HistoriaClinicaWorkspace({ folio }: { folio?: string }) {
     setSaving(true);
     setError(null);
     try {
-      const exp = await guardarExpediente(values, user, guardado);
+      const exp = await guardarExpediente(values, user, guardado ? (claveActual ?? null) : null);
       form.reset(exp.values);
       setSavedAt(new Date(exp.actualizadoEn));
+      const claveNueva = clave(exp.anio, exp.folio);
+      setClaveActual(claveNueva);
       if (!guardado) {
         setGuardado(true);
         recurrente.limpiar();
         // Cambia la URL sin volver a montar la página (no genera una "Consulta" extra)
-        window.history.replaceState(null, '', `/expediente/${exp.folio}`);
+        window.history.replaceState(null, '', `/expediente/${claveNueva}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible guardar el expediente.');

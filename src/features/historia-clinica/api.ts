@@ -6,6 +6,8 @@ import { fromDbPayload, toDbPayload } from './lib/db-mapping';
 
 export interface Expediente {
   folio: string;
+  /** Año de fecha_estudios: junto con `folio` arma la clave de ruta "{anio}-{folio}". */
+  anio: number;
   values: HistoriaClinicaValues;
   creadoEn: string;
   creadoPor: { id: string; nombre: string };
@@ -15,6 +17,7 @@ export interface Expediente {
 
 export interface ExpedienteResumen {
   folio: string;
+  anio: number;
   fechaEstudios: string;
   nombreCompleto: string;
   curp: string;
@@ -44,11 +47,17 @@ export interface EstadisticasExpedientes {
 
 interface BackendExpediente {
   folio: number;
+  anio: number;
   values: Record<string, unknown>;
   creado_por: { id: string; nombre: string | null };
   actualizado_por: { id: string; nombre: string | null };
   created_at: string;
   updated_at: string;
+}
+
+/** Arma la clave de ruta "{anio}-{folio}" que entiende el backend (GET/PUT /expedientes/{clave}). */
+export function clave(anio: number, folio: string): string {
+  return `${anio}-${folio}`;
 }
 
 function aExpediente(e: BackendExpediente): Expediente {
@@ -57,6 +66,7 @@ function aExpediente(e: BackendExpediente): Expediente {
   values.medicoDictaminador = nombrePorMedicoId(values.medicoDictaminador) || '';
   return {
     folio: String(e.folio),
+    anio: e.anio,
     values,
     creadoEn: e.created_at,
     creadoPor: { id: e.creado_por.id, nombre: e.creado_por.nombre ?? '' },
@@ -84,6 +94,7 @@ export async function listExpedientes(
 ): Promise<{ items: ExpedienteResumen[]; total: number }> {
   interface Fila {
     folio: number;
+    anio: number;
     fecha_estudios: string;
     nombre_completo: string | null;
     curp: string | null;
@@ -106,6 +117,7 @@ export async function listExpedientes(
     total,
     items: items.map((i) => ({
       folio: String(i.folio),
+      anio: i.anio,
       fechaEstudios: i.fecha_estudios,
       nombreCompleto: i.nombre_completo ?? '',
       curp: i.curp ?? '',
@@ -129,10 +141,14 @@ export async function obtenerEstadisticasExpedientes(): Promise<EstadisticasExpe
   return { total: r.total, ultimos7Dias: r.ultimos_7_dias, hoy: r.hoy, editadosHoy: r.editados_hoy, porTipo: r.por_tipo };
 }
 
-/** Abre un expediente; el servidor deja constancia de la consulta en la bitácora. */
-export async function abrirExpediente(folio: string, _user: SessionUser): Promise<Expediente | null> {
+/**
+ * Abre un expediente; el servidor deja constancia de la consulta en la bitácora.
+ *
+ * @param claveExpediente clave de ruta "{anio}-{folio}" (p. ej. "2026-6")
+ */
+export async function abrirExpediente(claveExpediente: string, _user: SessionUser): Promise<Expediente | null> {
   try {
-    const data = await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(folio)}`);
+    const data = await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(claveExpediente)}`);
     return aExpediente(data);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
@@ -153,22 +169,41 @@ export async function obtenerJornada(fecha: string): Promise<Expediente[]> {
 }
 
 /**
- * Crea (yaExiste = false) o actualiza (yaExiste = true) un expediente. El
- * folio y la fecha de realización los asigna/conserva el servidor; el
- * detalle de qué cambió en una edición lo calcula y registra el servidor.
+ * Respalda y borra para siempre todas las historias clínicas de un año (el
+ * cliente cierra el historial completo cada año por costo de almacenamiento).
+ * Solo lo puede pedir un administrador; no se puede deshacer.
+ *
+ * @param anio año a cerrar
+ * @return los expedientes borrados (para armar el Excel de respaldo) y el total
+ */
+export async function cerrarAnio(anio: number): Promise<{ totalBorrado: number; items: Expediente[] }> {
+  const data = await apiFetch<{ anio: number; total_borrado: number; items: BackendExpediente[] }>(
+    `/admin/anios/${anio}/cerrar`,
+    { method: 'POST', body: { confirmar: true } },
+  );
+  return { totalBorrado: data.total_borrado, items: data.items.map(aExpediente) };
+}
+
+/**
+ * Crea (claveExistente = null) o actualiza (claveExistente = la clave del
+ * expediente abierto) un expediente. El folio, el año y la fecha de
+ * realización los asigna/conserva el servidor; el detalle de qué cambió en
+ * una edición lo calcula y registra el servidor.
+ *
+ * @param claveExistente clave de ruta "{anio}-{folio}" del expediente a editar, o `null` para crear uno nuevo
  */
 export async function guardarExpediente(
   values: HistoriaClinicaValues,
   _user: SessionUser,
-  yaExiste: boolean,
+  claveExistente: string | null,
 ): Promise<Expediente> {
   const limpio = conValoresDeSistema(values);
   const payload = toDbPayload(limpio);
   // medicoDictaminador guarda el NOMBRE en el formulario; el backend espera el id del usuario.
   payload.medico_dictaminador = medicoIdPorNombre(limpio.medicoDictaminador) ?? null;
 
-  const data = yaExiste
-    ? await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(limpio.folio)}`, {
+  const data = claveExistente
+    ? await apiFetch<BackendExpediente>(`/expedientes/${encodeURIComponent(claveExistente)}`, {
         method: 'PUT',
         body: payload,
       })
